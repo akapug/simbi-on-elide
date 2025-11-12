@@ -1,127 +1,60 @@
-version: '3.8'
+version: '3.9'
 
 services:
-  # Main application
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    ports:
-      - "3000:3000"
-    environment:
-      - NODE_ENV=development
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_NAME=simbi_development
-      - DB_USER=postgres
-      - DB_PASSWORD=postgres
-      - REDIS_URL=redis://redis:6379
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    volumes:
-      - ./backend:/app/backend
-      - ./frontend:/app/frontend
-      - ./views:/app/views
-      - ./workers:/app/workers
-    networks:
-      - simbi-network
-    restart: unless-stopped
-
-  # PostgreSQL database
   postgres:
-    image: postgres:15-alpine
-    ports:
-      - "5432:5432"
+    image: postgres:16-alpine
+    container_name: simbi-postgres
     environment:
-      - POSTGRES_DB=simbi_development
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
+      POSTGRES_USER: simbi
+      POSTGRES_PASSWORD: simbi_dev_password
+      POSTGRES_DB: simbi_development
+    ports:
+      - '5432:5432'
     volumes:
-      - postgres-data:/var/lib/postgresql/data
-      - ./backend/db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
-    networks:
-      - simbi-network
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ['CMD-SHELL', 'pg_isready -U simbi']
       interval: 10s
       timeout: 5s
       retries: 5
-    restart: unless-stopped
 
-  # Redis for workers
   redis:
     image: redis:7-alpine
+    container_name: simbi-redis
     ports:
-      - "6379:6379"
+      - '6379:6379'
     volumes:
-      - redis-data:/data
-    networks:
-      - simbi-network
+      - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ['CMD', 'redis-cli', 'ping']
       interval: 10s
       timeout: 3s
       retries: 5
-    restart: unless-stopped
 
-  # Worker processes
-  workers:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    command: ["node", "dist/workers/start.js"]
+  meilisearch:
+    image: getmeili/meilisearch:v1.5
+    container_name: simbi-meilisearch
     environment:
-      - NODE_ENV=development
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_NAME=simbi_development
-      - DB_USER=postgres
-      - DB_PASSWORD=postgres
-      - REDIS_URL=redis://redis:6379
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    volumes:
-      - ./workers:/app/workers
-    networks:
-      - simbi-network
-    restart: unless-stopped
-
-  # PgAdmin for database management
-  pgadmin:
-    image: dpage/pgadmin4:latest
+      MEILI_MASTER_KEY: simbi_master_key_dev
+      MEILI_ENV: development
     ports:
-      - "5050:80"
-    environment:
-      - PGADMIN_DEFAULT_EMAIL=admin@simbi.com
-      - PGADMIN_DEFAULT_PASSWORD=admin
-      - PGADMIN_CONFIG_SERVER_MODE=False
+      - '7700:7700'
     volumes:
-      - pgadmin-data:/var/lib/pgadmin
-    networks:
-      - simbi-network
-    restart: unless-stopped
+      - meilisearch_data:/meili_data
+    healthcheck:
+      test: ['CMD', 'wget', '--no-verbose', '--tries=1', '--spider', 'http://localhost:7700/health']
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
-  # MailCatcher for testing emails
-  mailcatcher:
-    image: sj26/mailcatcher:latest
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: simbi-mailhog
     ports:
-      - "1080:1080"  # Web interface
-      - "1025:1025"  # SMTP
-    networks:
-      - simbi-network
-    restart: unless-stopped
+      - '1025:1025'
+      - '8025:8025'
 
 volumes:
-  postgres-data:
-  redis-data:
-  pgadmin-data:
-
-networks:
-  simbi-network:
-    driver: bridge
+  postgres_data:
+  redis_data:
+  meilisearch_data:

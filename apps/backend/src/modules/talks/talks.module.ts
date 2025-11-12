@@ -1,0 +1,22 @@
+import { Module } from '@nestjs/common';
+import { JwtModule } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
+import { TalksController } from './talks.controller';
+import { TalksService } from './talks.service';
+import { TalksGateway } from './talks.gateway';
+
+@Module({
+  imports: [
+    JwtModule.registerAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        secret: config.get('JWT_SECRET'),
+        signOptions: { expiresIn: config.get('JWT_EXPIRES_IN') || '7d' },
+      }),
+    }),
+  ],
+  controllers: [TalksController],
+  providers: [TalksService, TalksGateway],
+  exports: [TalksService, TalksGateway],
+})
+export class TalksModule {}

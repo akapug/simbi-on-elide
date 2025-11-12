@@ -1,0 +1,930 @@
+// Simbi Database Schema - Modern TypeScript/Prisma Version
+// Based on original Rails schema with 57+ models
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// ENUMS
+// ============================================================================
+
+enum UserRole {
+  user
+  member
+  moderator
+  admin
+}
+
+enum OnboardingState {
+  incomplete
+  complete
+  skipped
+}
+
+enum ServiceKind {
+  offered
+  requested
+  product
+  project
+}
+
+enum TradingType {
+  simbi
+  exchange
+  flexible
+  trade
+  pay_forward
+  usd
+}
+
+enum ServiceMedium {
+  in_person
+  online
+  both
+}
+
+enum ProcessingTime {
+  immediate
+  same_day
+  one_day
+  three_days
+  one_week
+  two_weeks
+  one_month
+  custom
+}
+
+enum ShippingType {
+  pickup
+  delivery
+  both
+  digital
+}
+
+enum ServiceState {
+  draft
+  active
+  inactive
+  archived
+  deleted
+}
+
+enum TalkStatus {
+  open
+  in_progress
+  completed
+  closed
+  cancelled
+}
+
+enum OfferStatus {
+  pending
+  accepted
+  declined
+  cancelled
+  expired
+}
+
+enum OrderStatus {
+  pending
+  accepted
+  in_progress
+  shipped
+  delivered
+  completed
+  cancelled
+  refunded
+}
+
+enum ReviewStatus {
+  pending
+  published
+  hidden
+}
+
+enum FavoriteType {
+  like
+  admire
+  superlike
+}
+
+enum NotificationType {
+  message
+  offer
+  match
+  review
+  comment
+  follower
+  system
+}
+
+enum CommunityVisibility {
+  public
+  private
+  secret
+}
+
+// ============================================================================
+// USER & AUTHENTICATION
+// ============================================================================
+
+model User {
+  id                    String              @id @default(uuid())
+  email                 String              @unique
+  emailVerified         Boolean             @default(false)
+  emailVerifiedAt       DateTime?
+  password              String?
+  role                  UserRole            @default(user)
+
+  // Profile
+  firstName             String?
+  lastName              String?
+  username              String?             @unique
+  slug                  String?             @unique
+  about                 String?             @db.Text
+  avatar                String?
+  website               String?
+  phoneNumber           String?
+  phoneVerified         Boolean             @default(false)
+  qualifications        String?             @db.Text
+
+  // Location
+  address               String?
+  city                  String?
+  state                 String?
+  zipcode               String?
+  country               String              @default("US")
+  countryCode           String?
+  latitude              Float?
+  longitude             Float?
+  timezone              String?
+
+  // Metrics
+  rating                Float               @default(0)
+  responseRate          Float               @default(0)
+  strength              Int                 @default(0)
+  trustScore            Int                 @default(0)
+
+  // Account Status
+  onboardingState       OnboardingState     @default(incomplete)
+  deactivatedAt         DateTime?
+  deletedAt             DateTime?
+  lastSeenAt            DateTime?
+
+  // Preferences
+  disabledNotifications Boolean             @default(false)
+  vacationMode          Boolean             @default(false)
+  vacationModeUntil     DateTime?
+  settings              Json?               @db.JsonB
+  enabledFeatures       String[]
+
+  // Social
+  referralCode          String?             @unique
+  referredBy            String?
+  referrer              User?               @relation("UserReferrals", fields: [referredBy], references: [id])
+  referrals             User[]              @relation("UserReferrals")
+
+  // Timestamps
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  // Relations
+  oauthAccounts         OAuthAccount[]
+  refreshTokens         RefreshToken[]
+  services              Service[]
+  sentTalks             Talk[]              @relation("SenderTalks")
+  receivedTalks         Talk[]              @relation("ReceiverTalks")
+  messages              Message[]
+  sentOffers            Offer[]             @relation("OfferSender")
+  receivedOffers        Offer[]             @relation("OfferReceiver")
+  orders                Order[]             @relation("OrderBuyer")
+  sellerOrders          Order[]             @relation("OrderSeller")
+  reviews               Review[]            @relation("ReviewAuthor")
+  receivedReviews       Review[]            @relation("ReviewSubject")
+  comments              Comment[]
+  favorites             Favorite[]          @relation("FavoriteFrom")
+  receivedFavorites     Favorite[]          @relation("FavoriteTo")
+  following             Friendship[]        @relation("FollowerUser")
+  followers             Friendship[]        @relation("FollowedUser")
+  notifications         Notification[]
+  devices               Device[]
+  accounts              Account[]
+  transactions          Transaction[]       @relation("TransactionUser")
+  flags                 Flag[]
+  communities           CommunityUser[]
+  subscriptions         Subscription[]
+  paymentMethods        PaymentMethod[]
+  badges                UserBadge[]
+
+  @@index([email])
+  @@index([username])
+  @@index([slug])
+  @@index([latitude, longitude])
+  @@index([createdAt])
+  @@map("users")
+}
+
+model OAuthAccount {
+  id                String    @id @default(uuid())
+  userId            String
+  provider          String    // google, facebook, apple, linkedin
+  providerAccountId String
+  accessToken       String?   @db.Text
+  refreshToken      String?   @db.Text
+  expiresAt         DateTime?
+  tokenType         String?
+  scope             String?
+  idToken           String?   @db.Text
+
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+  @@map("oauth_accounts")
+}
+
+model RefreshToken {
+  id                String    @id @default(uuid())
+  tokenHash         String    @unique
+  userId            String
+  expiresAt         DateTime
+  deviceInfo        Json?     @db.JsonB
+  createdAt         DateTime  @default(now())
+
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+model Device {
+  id                String    @id @default(uuid())
+  userId            String
+  deviceType        String    // ios, android, web
+  deviceToken       String?   // For push notifications
+  oneSignalId       String?
+  fcmToken          String?
+
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("devices")
+}
+
+// ============================================================================
+// SERVICES / LISTINGS
+// ============================================================================
+
+model Service {
+  id                String            @id @default(uuid())
+  userId            String
+  kind              ServiceKind       @default(offered)
+  state             ServiceState      @default(draft)
+
+  // Content
+  title             String
+  description       String            @db.Text
+  tags              String[]
+  images            String[]
+
+  // Type & Trading
+  tradingType       TradingType       @default(flexible)
+  medium            ServiceMedium     @default(both)
+  processingTime    ProcessingTime?
+  shippingType      ShippingType?
+
+  // Pricing
+  simbiPrice        Int?              // In Simbi credits
+  usdPrice          Int?              // In cents
+  estimatedHours    Float?
+
+  // Location
+  latitude          Float?
+  longitude         Float?
+  address           String?
+  city              String?
+  locationState     String?
+  zipcode           String?
+  country           String?
+  radius            Int?              // Service radius in miles
+
+  // Category
+  categoryId        String?
+  subcategoryId     String?
+  category          Category?         @relation(fields: [categoryId], references: [id])
+
+  // Metrics
+  viewCount         Int               @default(0)
+  likeCount         Int               @default(0)
+  matchCount        Int               @default(0)
+  rating            Float             @default(0)
+  reviewCount       Int               @default(0)
+  orderCount        Int               @default(0)
+
+  // Visibility
+  featured          Boolean           @default(false)
+  promoted          Boolean           @default(false)
+  publishedAt       DateTime?
+  archivedAt        DateTime?
+  deletedAt         DateTime?
+
+  // Relations
+  user              User              @relation(fields: [userId], references: [id])
+  talks             Talk[]
+  favorites         Favorite[]
+  comments          Comment[]
+  reviews           Review[]
+  flags             Flag[]
+
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  @@index([userId])
+  @@index([kind])
+  @@index([state])
+  @@index([categoryId])
+  @@index([latitude, longitude])
+  @@index([publishedAt])
+  @@map("services")
+}
+
+model Category {
+  id                String      @id @default(uuid())
+  name              String      @unique
+  slug              String      @unique
+  description       String?     @db.Text
+  icon              String?
+  parentId          String?
+  parent            Category?   @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children          Category[]  @relation("CategoryHierarchy")
+  services          Service[]
+  orderIndex        Int         @default(0)
+
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@index([slug])
+  @@map("categories")
+}
+
+// ============================================================================
+// MESSAGING & TALKS
+// ============================================================================
+
+model Talk {
+  id                String      @id @default(uuid())
+  senderId          String
+  receiverId        String
+  serviceId         String?
+
+  status            TalkStatus  @default(open)
+  subject           String?
+
+  // Flags
+  senderArchived    Boolean     @default(false)
+  receiverArchived  Boolean     @default(false)
+  senderRead        Boolean     @default(true)
+  receiverRead      Boolean     @default(false)
+
+  // Deal tracking
+  assumedCompleted  Boolean     @default(false)
+  confirmedAt       DateTime?
+  completedAt       DateTime?
+
+  // Relations
+  sender            User        @relation("SenderTalks", fields: [senderId], references: [id])
+  receiver          User        @relation("ReceiverTalks", fields: [receiverId], references: [id])
+  service           Service?    @relation(fields: [serviceId], references: [id])
+  messages          Message[]
+  offers            Offer[]
+  orders            Order[]
+  reviews           Review[]
+
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@index([senderId])
+  @@index([receiverId])
+  @@index([serviceId])
+  @@index([status])
+  @@map("talks")
+}
+
+model Message {
+  id                String      @id @default(uuid())
+  talkId            String
+  userId            String
+
+  content           String      @db.Text
+  attachments       String[]
+
+  read              Boolean     @default(false)
+  readAt            DateTime?
+
+  // Relations
+  talk              Talk        @relation(fields: [talkId], references: [id], onDelete: Cascade)
+  user              User        @relation(fields: [userId], references: [id])
+
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@index([talkId])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("messages")
+}
+
+model Offer {
+  id                String        @id @default(uuid())
+  talkId            String
+  senderId          String
+  receiverId        String
+
+  // Offer details
+  description       String        @db.Text
+  simbiAmount       Int?
+  serviceOffered    String?       @db.Text
+  hours             Float?
+  status            OfferStatus   @default(pending)
+
+  // Dates
+  expiresAt         DateTime?
+  acceptedAt        DateTime?
+  declinedAt        DateTime?
+
+  // Relations
+  talk              Talk          @relation(fields: [talkId], references: [id])
+  sender            User          @relation("OfferSender", fields: [senderId], references: [id])
+  receiver          User          @relation("OfferReceiver", fields: [receiverId], references: [id])
+
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  @@index([talkId])
+  @@index([senderId])
+  @@index([receiverId])
+  @@map("offers")
+}
+
+// ============================================================================
+// ORDERS & TRANSACTIONS
+// ============================================================================
+
+model Order {
+  id                String        @id @default(uuid())
+  talkId            String?
+  buyerId           String
+  sellerId          String
+
+  // Order details
+  description       String        @db.Text
+  quantity          Int           @default(1)
+  simbiAmount       Int?
+  usdAmount         Int?          // In cents
+  shippingAddress   Json?         @db.JsonB
+  trackingNumber    String?
+
+  status            OrderStatus   @default(pending)
+
+  // Dates
+  acceptedAt        DateTime?
+  shippedAt         DateTime?
+  deliveredAt       DateTime?
+  completedAt       DateTime?
+  cancelledAt       DateTime?
+
+  // Relations
+  talk              Talk?         @relation(fields: [talkId], references: [id])
+  buyer             User          @relation("OrderBuyer", fields: [buyerId], references: [id])
+  seller            User          @relation("OrderSeller", fields: [sellerId], references: [id])
+  transactions      Transaction[]
+
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  @@index([buyerId])
+  @@index([sellerId])
+  @@index([status])
+  @@map("orders")
+}
+
+model Transaction {
+  id                String      @id @default(uuid())
+  userId            String
+  orderId           String?
+
+  // Transaction details
+  type              String      // credit, debit, bonus, referral, payment
+  amount            Int         // In Simbi credits or USD cents
+  currency          String      @default("SIMBI") // SIMBI or USD
+  description       String
+  metadata          Json?       @db.JsonB
+
+  // Stripe
+  stripeChargeId    String?
+  stripeTransferId  String?
+
+  // Relations
+  user              User        @relation("TransactionUser", fields: [userId], references: [id])
+  order             Order?      @relation(fields: [orderId], references: [id])
+
+  createdAt         DateTime    @default(now())
+
+  @@index([userId])
+  @@index([orderId])
+  @@index([type])
+  @@index([createdAt])
+  @@map("transactions")
+}
+
+model Account {
+  id                String      @id @default(uuid())
+  userId            String
+
+  simbiBalance      Int         @default(0)
+  simbiEarned       Int         @default(0)
+  simbiSpent        Int         @default(0)
+
+  usdBalance        Int         @default(0) // In cents
+
+  // Relations
+  user              User        @relation(fields: [userId], references: [id])
+
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@unique([userId])
+  @@map("accounts")
+}
+
+// ============================================================================
+// REVIEWS & RATINGS
+// ============================================================================
+
+model Review {
+  id                String        @id @default(uuid())
+  talkId            String?
+  serviceId         String?
+  authorId          String
+  subjectId         String
+
+  rating            Int           // 1-5
+  content           String?       @db.Text
+  status            ReviewStatus  @default(pending)
+
+  helpful           Int           @default(0)
+  notHelpful        Int           @default(0)
+
+  publishedAt       DateTime?
+
+  // Relations
+  talk              Talk?         @relation(fields: [talkId], references: [id])
+  service           Service?      @relation(fields: [serviceId], references: [id])
+  author            User          @relation("ReviewAuthor", fields: [authorId], references: [id])
+  subject           User          @relation("ReviewSubject", fields: [subjectId], references: [id])
+
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  @@index([authorId])
+  @@index([subjectId])
+  @@index([serviceId])
+  @@map("reviews")
+}
+
+// ============================================================================
+// SOCIAL FEATURES
+// ============================================================================
+
+model Favorite {
+  id                String        @id @default(uuid())
+  userId            String
+  targetUserId      String?
+  serviceId         String?
+
+  type              FavoriteType  @default(like)
+
+  // Relations
+  user              User          @relation("FavoriteFrom", fields: [userId], references: [id])
+  targetUser        User?         @relation("FavoriteTo", fields: [targetUserId], references: [id])
+  service           Service?      @relation(fields: [serviceId], references: [id])
+
+  createdAt         DateTime      @default(now())
+
+  @@unique([userId, targetUserId, type])
+  @@unique([userId, serviceId])
+  @@index([userId])
+  @@index([targetUserId])
+  @@index([serviceId])
+  @@map("favorites")
+}
+
+model Friendship {
+  id                String      @id @default(uuid())
+  followerId        String
+  followedId        String
+
+  dismissed         Boolean     @default(false)
+
+  // Relations
+  follower          User        @relation("FollowerUser", fields: [followerId], references: [id])
+  followed          User        @relation("FollowedUser", fields: [followedId], references: [id])
+
+  createdAt         DateTime    @default(now())
+
+  @@unique([followerId, followedId])
+  @@index([followerId])
+  @@index([followedId])
+  @@map("friendships")
+}
+
+model Comment {
+  id                String      @id @default(uuid())
+  userId            String
+  serviceId         String?
+  parentId          String?
+
+  content           String      @db.Text
+  mentions          String[]    // User IDs mentioned
+
+  read              Boolean     @default(false)
+  hidden            Boolean     @default(false)
+  deletedAt         DateTime?
+
+  // Relations
+  user              User        @relation(fields: [userId], references: [id])
+  service           Service?    @relation(fields: [serviceId], references: [id])
+  parent            Comment?    @relation("CommentReplies", fields: [parentId], references: [id])
+  replies           Comment[]   @relation("CommentReplies")
+
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@index([userId])
+  @@index([serviceId])
+  @@index([parentId])
+  @@map("comments")
+}
+
+// ============================================================================
+// COMMUNITIES
+// ============================================================================
+
+model Community {
+  id                String              @id @default(uuid())
+  name              String
+  slug              String              @unique
+  description       String?             @db.Text
+
+  // Location
+  latitude          Float?
+  longitude         Float?
+  address           String?
+  city              String?
+  state             String?
+  country           String?
+  radius            Int                 @default(50) // in miles
+
+  // Settings
+  visibility        CommunityVisibility @default(public)
+  requireApproval   Boolean             @default(false)
+
+  // Branding
+  avatar            String?
+  coverImage        String?
+  website           String?
+
+  // Metrics
+  memberCount       Int                 @default(0)
+
+  featured          Boolean             @default(false)
+  verified          Boolean             @default(false)
+
+  // Relations
+  members           CommunityUser[]
+
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@index([slug])
+  @@index([latitude, longitude])
+  @@map("communities")
+}
+
+model CommunityUser {
+  id                String      @id @default(uuid())
+  communityId       String
+  userId            String
+
+  role              String      @default("member") // member, moderator, captain
+  approved          Boolean     @default(true)
+
+  // Relations
+  community         Community   @relation(fields: [communityId], references: [id])
+  user              User        @relation(fields: [userId], references: [id])
+
+  createdAt         DateTime    @default(now())
+
+  @@unique([communityId, userId])
+  @@index([communityId])
+  @@index([userId])
+  @@map("community_users")
+}
+
+// ============================================================================
+// NOTIFICATIONS
+// ============================================================================
+
+model Notification {
+  id                String            @id @default(uuid())
+  userId            String
+  type              NotificationType
+
+  title             String
+  content           String            @db.Text
+  data              Json?             @db.JsonB
+
+  read              Boolean           @default(false)
+  readAt            DateTime?
+
+  actionUrl         String?
+
+  // Relations
+  user              User              @relation(fields: [userId], references: [id])
+
+  createdAt         DateTime          @default(now())
+
+  @@index([userId])
+  @@index([read])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+// ============================================================================
+// FLAGS & MODERATION
+// ============================================================================
+
+model Flag {
+  id                String      @id @default(uuid())
+  userId            String
+  serviceId         String?
+
+  reason            String
+  description       String?     @db.Text
+
+  resolved          Boolean     @default(false)
+  resolvedAt        DateTime?
+  resolvedBy        String?
+
+  // Relations
+  user              User        @relation(fields: [userId], references: [id])
+  service           Service?    @relation(fields: [serviceId], references: [id])
+
+  createdAt         DateTime    @default(now())
+
+  @@index([userId])
+  @@index([serviceId])
+  @@index([resolved])
+  @@map("flags")
+}
+
+// ============================================================================
+// PAYMENTS & SUBSCRIPTIONS
+// ============================================================================
+
+model Subscription {
+  id                String      @id @default(uuid())
+  userId            String
+
+  stripeCustomerId      String?
+  stripeSubscriptionId  String?     @unique
+  stripePriceId         String?
+
+  plan              String      // basic, premium, pro
+  status            String      // active, cancelled, past_due
+
+  currentPeriodStart    DateTime?
+  currentPeriodEnd      DateTime?
+  cancelAtPeriodEnd     Boolean     @default(false)
+  cancelledAt           DateTime?
+
+  // Relations
+  user              User        @relation(fields: [userId], references: [id])
+
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@index([userId])
+  @@index([stripeSubscriptionId])
+  @@map("subscriptions")
+}
+
+model PaymentMethod {
+  id                String      @id @default(uuid())
+  userId            String
+
+  stripePaymentMethodId String  @unique
+  type              String      // card, bank_account
+  last4             String?
+  brand             String?
+  expiryMonth       Int?
+  expiryYear        Int?
+
+  isDefault         Boolean     @default(false)
+
+  // Relations
+  user              User        @relation(fields: [userId], references: [id])
+
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@index([userId])
+  @@map("payment_methods")
+}
+
+// ============================================================================
+// GAMIFICATION
+// ============================================================================
+
+model Badge {
+  id                String      @id @default(uuid())
+  name              String      @unique
+  slug              String      @unique
+  description       String      @db.Text
+  icon              String
+  criteria          Json        @db.JsonB
+
+  userBadges        UserBadge[]
+
+  createdAt         DateTime    @default(now())
+
+  @@map("badges")
+}
+
+model UserBadge {
+  id                String      @id @default(uuid())
+  userId            String
+  badgeId           String
+
+  // Relations
+  user              User        @relation(fields: [userId], references: [id])
+  badge             Badge       @relation(fields: [badgeId], references: [id])
+
+  createdAt         DateTime    @default(now())
+
+  @@unique([userId, badgeId])
+  @@index([userId])
+  @@map("user_badges")
+}
+
+// ============================================================================
+// AUDIT & ACTIVITY
+// ============================================================================
+
+model AuditLog {
+  id                String      @id @default(uuid())
+  userId            String?
+  action            String
+  entityType        String
+  entityId          String
+  oldValue          Json?       @db.JsonB
+  newValue          Json?       @db.JsonB
+  ipAddress         String?
+  userAgent         String?
+
+  createdAt         DateTime    @default(now())
+
+  @@index([userId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model ActivityFeed {
+  id                String      @id @default(uuid())
+  userId            String
+  actorId           String?
+  action            String      // created_service, liked_service, followed_user, etc.
+  targetType        String?
+  targetId          String?
+  metadata          Json?       @db.JsonB
+
+  createdAt         DateTime    @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+  @@map("activity_feeds")
+}

@@ -1,0 +1,70 @@
+//- Services Index Page (Main Dashboard/Feed)
+//- Converted from app/views/services/index.html.slim
+
+//- Set content class for styling
+- var contentClass = 'gray-background services-home'
+
+//- Define modals section
+- content_for('modals', function() {
+  if currentUser && currentUser.geocoded && currentUser.location && currentUser.location.city
+    != render('users/modals/main_site_welcome_modal')
+    != render('users/modals/onboard_welcome_modal')
+  else if !impersonation
+    != render('users/modals/geocoding_modal')
+
+  if badges && badges.length > 0
+    != render('shared/badge_received_modal')
+
+  if showFirstDealModal
+    #first-deal-container
+    script.
+      simbi('createComponent').then(function(createComponent) {
+        createComponent('FirstDealModal', {
+          el: '#first-deal-container',
+          propsData: {
+            firstDeal: gon.firstDeal
+          }
+        });
+      });
+- })
+
+//- Community section
+!= render('home/community_section')
+
+//- Main feed
+!= render('shared/feed', { scrollableFeed: true, showAllLink: true })
+
+.visible-xxs.text-center
+  br
+  h5.see-more-link
+    != link_to(t('rootpage.sections.news.see-more'), news_eedPath)
+
+br.hidden-xxs
+
+//- Service groups
+each group in serviceGroups
+  div(class=(group.sectionClass === 'teal' ? 'section-headings-teal' : ''))
+    != render('services/root_section', { group: group })
+  br.hidden-xxs
+
+//- Collections section
+if collections && collections.length > 0
+  .section-heading
+    h3= t('rootpage.sections.collections.title')
+  != render('category_tags/collections')
+
+//- Bottom section with blog and browse more
+- content_for('bottom_section', function() {
+  .lighter-gray-background
+    != render('shared/blog_content', { blogs: ['stories', 'articles'] })
+    br.br2
+    != render('shared/browse_more_section')
+    br.br2
+
+  script.
+    simbi('trackMpAfterLoad').then(function(trackMpAfterLoad) {
+      trackMpAfterLoad('Loads root page');
+      mixpanel.track_links('#new-request-link', 'Click Post Request');
+      mixpanel.track_links('#new-offer-link', 'Click Offer Service');
+    });
+- })

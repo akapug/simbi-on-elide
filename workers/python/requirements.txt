@@ -1,0 +1,17 @@
+# Python dependencies for Simbi workers
+
+# Image processing
+Pillow>=10.1.0
+pillow-heif>=0.13.0  # HEIF/HEIC support
+
+# AWS S3 for image uploads
+boto3>=1.29.0
+
+# HTTP requests
+requests>=2.31.0
+
+# Redis client
+redis>=5.0.1
+
+# Utilities
+python-dateutil>=2.8.2

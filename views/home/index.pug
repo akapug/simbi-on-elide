@@ -1,0 +1,13 @@
+//- Home Index Page
+//- Converted from app/views/home/index.html.slim
+
+//- Render shared home sign out component
+!= render('shared/home_sign_out')
+
+//- Track landing page load
+script.
+  $(function() {
+    simbi('addTrackOnceEvent').then(function(addTrackOnceEvent) {
+      addTrackOnceEvent('Landing Load');
+    });
+  });

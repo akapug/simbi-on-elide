@@ -1,0 +1,19 @@
+//- Sentry error tracking
+
+if sentryDsn
+  script(src='https://browser.sentry-cdn.com/7.0.0/bundle.min.js' crossorigin='anonymous')
+  script.
+    Sentry.init({
+      dsn: "#{sentryDsn}",
+      environment: "#{env}",
+      integrations: [new Sentry.BrowserTracing()],
+      tracesSampleRate: 0.1
+    });
+
+    if (typeof currentUser !== 'undefined' && currentUser) {
+      Sentry.setUser({
+        id: currentUser.id,
+        email: currentUser.email,
+        username: currentUser.username
+      });
+    }

@@ -1,0 +1,8 @@
+//- Top Alerts Partial
+
+if alerts && alerts.length > 0
+  each alert in alerts
+    .alert(class=`alert-${alert.type}` role='alert')
+      button.close(type='button' data-dismiss='alert' aria-label='Close')
+        span(aria-hidden='true') &times;
+      != alert.message
